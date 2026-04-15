@@ -1,19 +1,13 @@
-# Python
 __pycache__/
 *.py[cod]
-*.egg-info/
-dist/
-build/
 .venv/
-env/
 venv/
-
-# Environment
+env/
 .env
-
-# Outputs
 outputs/
-
-# OS
+*.csv
+*.md.bak
 .DS_Store
-Thumbs.db
+.pytest_cache/
+.coverage
+htmlcov/

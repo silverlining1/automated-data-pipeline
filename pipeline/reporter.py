@@ -1,4 +1,4 @@
-"""Markdown report and CSV snapshot writer."""
+"""Weather pipeline report and CSV snapshot writer."""
 
 import logging
 import os
@@ -8,57 +8,81 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
-def write_report(df: pd.DataFrame, metrics: dict, run_date: str, output_dir: str) -> str:
-    """Write a Markdown report and CSV snapshot for the pipeline run.
+def write_report(df: pd.DataFrame, metrics: dict, run_date: str, output_dir: str, city: str = "") -> str:
+    """Write a Markdown weather report and CSV data snapshot.
 
     Args:
         df: Cleaned DataFrame.
         metrics: KPI metrics dictionary.
         run_date: Date string (YYYY-MM-DD).
         output_dir: Directory to save outputs.
+        city: Optional city/location label.
 
     Returns:
         Path to the Markdown report file.
     """
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    city_label = f" — {city}" if city else ""
 
     # Write CSV snapshot
-    csv_path = os.path.join(output_dir, f"data_{run_date}.csv")
+    csv_path = os.path.join(output_dir, f"weather_{run_date}.csv")
     df.to_csv(csv_path, index=False)
-    logger.info(f"CSV snapshot saved: {csv_path}")
+    logger.info(f"CSV snapshot: {csv_path}")
 
-    # Build Markdown report
     lines = [
-        f"# Pipeline Report — {run_date}",
-        f"**Generated:** {now}  ",
+        f"# Weather Report{city_label}",
+        f"**Run date:** {run_date}  ",
+        f"**Generated:** {now}",
         "",
         "---",
         "",
-        "## Dataset Overview",
-        f"- **Total records:** {metrics.get('total_records', 'N/A'):,}",
-        f"- **Columns:** {metrics.get('total_columns', 'N/A')}",
-        f"- **Fields:** `{'`, `'.join(metrics.get('columns', []))}`",
+        "## Forecast Window",
+        f"- **From:** {metrics.get('date_from', 'N/A')}",
+        f"- **To:** {metrics.get('date_to', 'N/A')}",
+        f"- **Days covered:** {metrics.get('total_days', 'N/A')}",
+        "",
+        "## Temperature Summary",
+        f"- **Avg high:** {metrics.get('avg_high_f', 'N/A')} °F",
+        f"- **Avg low:** {metrics.get('avg_low_f', 'N/A')} °F",
+        f"- **Hottest day high:** {metrics.get('max_high_f', 'N/A')} °F",
+        f"- **Coolest day high:** {metrics.get('min_high_f', 'N/A')} °F",
+        f"- **Avg temp range:** {metrics.get('avg_temp_range_f', 'N/A')} °F",
+        "",
+        "## Precipitation",
+        f"- **Total precipitation:** {metrics.get('total_precip_in', 'N/A')} in",
+        f"- **Rainy days:** {metrics.get('rainy_days', 'N/A')}",
+        "",
+        "## Wind",
+        f"- **Avg max wind:** {metrics.get('avg_wind_mph', 'N/A')} mph",
+        f"- **Strongest gust:** {metrics.get('max_wind_mph', 'N/A')} mph",
         "",
     ]
 
-    if "records_by_group" in metrics:
-        col = metrics.get("top_group_column", "Group")
-        lines += [f"## Records by {col.title()}", ""]
-        for key, count in metrics["records_by_group"].items():
-            lines.append(f"- **{key}:** {count:,}")
+    if "conditions" in metrics and metrics["conditions"]:
+        lines += ["## Sky Conditions", ""]
+        for cond, days in metrics["conditions"].items():
+            lines.append(f"- **{cond}:** {days} day(s)")
         lines.append("")
 
-    if metrics.get("numeric_summaries"):
-        lines += ["## Numeric Field Summaries", ""]
-        lines.append("| Field | Mean | Min | Max |")
-        lines.append("|---|---|---|---|")
-        for col, stats in metrics["numeric_summaries"].items():
-            lines.append(f"| {col} | {stats['mean']} | {stats['min']} | {stats['max']} |")
+    # Daily detail table
+    date_col = "date" if "date" in df.columns else None
+    if date_col:
+        lines += ["## Daily Detail", ""]
+        lines.append("| Date | High (°F) | Low (°F) | Precip (in) | Wind Max (mph) | Condition |")
+        lines.append("|---|---|---|---|---|---|")
+        for _, row in df.iterrows():
+            date = str(row["date"].date()) if pd.notna(row.get("date")) else "—"
+            hi = f"{row['temp_max_f']:.1f}" if "temp_max_f" in row and pd.notna(row["temp_max_f"]) else "—"
+            lo = f"{row['temp_min_f']:.1f}" if "temp_min_f" in row and pd.notna(row["temp_min_f"]) else "—"
+            precip = f"{row['precip_in']:.2f}" if "precip_in" in row and pd.notna(row["precip_in"]) else "—"
+            wind = f"{row['wind_max_mph']:.1f}" if "wind_max_mph" in row and pd.notna(row["wind_max_mph"]) else "—"
+            cond = row.get("condition", "—")
+            lines.append(f"| {date} | {hi} | {lo} | {precip} | {wind} | {cond} |")
         lines.append("")
 
     lines += [
         "## Outputs",
-        f"- `data_{run_date}.csv` — raw cleaned snapshot",
+        f"- `weather_{run_date}.csv` — daily data snapshot",
         f"- `report_{run_date}.md` — this report",
         "",
         "---",

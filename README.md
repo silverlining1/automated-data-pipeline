@@ -1,24 +1,19 @@
 # Automated Data Pipeline
 
-> A production-grade Python pipeline that fetches data from a public API, cleans and processes it, computes KPI metrics, and exports a daily Markdown report — automatically. Built by [Code Alchemist Labs](https://codealchemistlabs.com).
+> A production-style Python pipeline that fetches 7-day weather forecast data from the [Open-Meteo](https://open-meteo.com/) free API, cleans it, computes daily KPIs, and writes a Markdown report + CSV snapshot — all with retry logic and structured logging. Built by [Code Alchemist Labs](https://codealchemistlabs.com).
+
+**Days 21–25 of the Code Alchemist Labs 30-Day Python Portfolio.**
 
 ---
 
-## What This Does
+## What It Does
 
-This pipeline runs on a schedule (or on demand) and:
+1. **Fetches** daily weather forecast (temp, precipitation, wind, condition) from Open-Meteo — no API key required
+2. **Cleans** the nested JSON response into a flat, typed DataFrame
+3. **Computes KPIs**: avg highs/lows, total precipitation, rainy day count, wind peaks, sky condition breakdown
+4. **Writes outputs**: a Markdown report and a dated CSV snapshot to `outputs/`
 
-1. **Fetches** structured data from a configurable REST API endpoint
-2. **Cleans** the response — handles missing values, type coercion, deduplication
-3. **Computes KPIs** — counts, averages, trends, and custom business metrics
-4. **Exports** a Markdown report + CSV snapshot to the `outputs/` directory
-5. **Logs** every step with structured logging for debugging and auditing
-
-**Real-world use cases:**
-- Pull daily lead or sales data from a CRM API and generate a morning report
-- Monitor API health and data quality over time
-- Feed cleaned data into a downstream ML pipeline
-- Automate client-facing reporting from raw API data
+Runs in under 5 seconds. Designed to be scheduled via cron.
 
 ---
 
@@ -28,13 +23,17 @@ This pipeline runs on a schedule (or on demand) and:
 automated-data-pipeline/
 ├── pipeline/
 │   ├── __init__.py
-│   ├── fetcher.py        # API data fetching with retries
-│   ├── cleaner.py        # Data cleaning and normalization
-│   ├── metrics.py        # KPI computation
-│   └── reporter.py       # Markdown + CSV report writer
-├── outputs/              # Generated reports and data snapshots (git-ignored)
-├── main.py               # CLI entrypoint
-├── config.py             # Config via environment variables
+│   ├── fetcher.py      # HTTP client with retry + backoff
+│   ├── cleaner.py      # JSON → DataFrame, type coercion, derived columns
+│   ├── metrics.py      # KPI computation
+│   └── reporter.py     # Markdown + CSV writer
+├── outputs/            # Generated reports (git-ignored)
+├── tests/
+│   ├── test_fetcher.py
+│   ├── test_cleaner.py
+│   └── test_metrics.py
+├── main.py             # CLI entrypoint
+├── config.py           # Config via environment variables
 ├── requirements.txt
 ├── .env.example
 └── README.md
@@ -45,65 +44,97 @@ automated-data-pipeline/
 ## Quickstart
 
 ```bash
-# 1. Clone and install
 git clone https://github.com/silverlining1/automated-data-pipeline.git
 cd automated-data-pipeline
 pip install -r requirements.txt
 
-# 2. Configure
+# Copy and customize (optional — defaults to Atlanta, GA)
 cp .env.example .env
-# Edit .env with your API endpoint and settings
 
-# 3. Run the pipeline
+# Run the pipeline
 python main.py
 
-# 4. Check outputs/
-# → outputs/report_2026-04-15.md
-# → outputs/data_2026-04-15.csv
+# Check outputs/
+# → outputs/report_YYYY-MM-DD.md
+# → outputs/weather_YYYY-MM-DD.csv
 ```
 
 ---
 
 ## Configuration
 
-All settings are managed via environment variables in `.env`:
-
 ```env
-API_URL=https://jsonplaceholder.typicode.com/posts
-API_TIMEOUT=10
+# Location
+LATITUDE=33.749
+LONGITUDE=-84.388
+CITY_NAME=Atlanta, GA
+FORECAST_DAYS=7
+
+# API behavior
+API_TIMEOUT=15
 RETRY_ATTEMPTS=3
-RETRY_BACKOFF=2
+RETRY_BACKOFF=2.0
+
+# Output
 OUTPUT_DIR=outputs
 LOG_LEVEL=INFO
 ```
 
 ---
 
-## Retry Logic
+## Scheduling (Optional)
 
-The fetcher uses exponential backoff with configurable retries. If the API returns a 5xx error or times out, it automatically retries up to `RETRY_ATTEMPTS` times with an increasing wait between each attempt. This makes the pipeline reliable in production environments.
+Run daily at 6 AM using cron:
+
+```bash
+# crontab -e
+0 6 * * * cd /path/to/automated-data-pipeline && python main.py
+```
 
 ---
 
-## Scheduling
+## Example Output
 
-To run daily, add a cron job:
+```markdown
+# Weather Report — Atlanta, GA
+Run date: 2026-04-15 | Generated: 2026-04-15 06:01:23
 
-```bash
-# Run at 6:00 AM every day
-0 6 * * * /usr/bin/python3 /path/to/automated-data-pipeline/main.py >> /var/log/pipeline.log 2>&1
+## Forecast Window
+- From: 2026-04-15
+- To:   2026-04-21
+- Days covered: 7
+
+## Temperature Summary
+- Avg high: 72.4 °F
+- Avg low: 54.1 °F
+
+## Precipitation
+- Total precipitation: 0.42 in
+- Rainy days: 2
+
+## Daily Detail
+| Date       | High (°F) | Low (°F) | Precip (in) | Condition        |
+|------------|-----------|----------|-------------|------------------|
+| 2026-04-15 | 74.2      | 55.0     | 0.00        | Mainly clear     |
+| 2026-04-16 | 68.1      | 52.3     | 0.21        | Moderate rain    |
 ```
 
-Or use a cloud scheduler (AWS EventBridge, GCP Cloud Scheduler, etc.) pointing to the script.
+---
+
+## Running Tests
+
+```bash
+pytest tests/ -v
+```
 
 ---
 
 ## Tech Stack
 
-- **Python 3.10+**
-- **requests** — HTTP client with retry support
+- **requests** — HTTP client
 - **pandas** — data cleaning and transformation
 - **python-dotenv** — config management
+- **pytest** — unit tests
 - **logging** — structured runtime logs
 
 ---
@@ -113,7 +144,7 @@ Or use a cloud scheduler (AWS EventBridge, GCP Cloud Scheduler, etc.) pointing t
 | # | Project | Focus |
 |---|---|---|
 | 1 | [EDA Toolkit](https://github.com/silverlining1/EDAexample) | Data cleaning + analysis |
-| 2 | [ML Pipeline](https://github.com/silverlining1/ml-pipeline) | scikit-learn model training + evaluation |
+| 2 | [ML Pipeline](https://github.com/silverlining1/ml-pipeline) | scikit-learn model training |
 | 3 | **Automated Data Pipeline** (this) | API ingestion + reporting |
 | 4 | [Prediction API](https://github.com/silverlining1/prediction-api) | FastAPI ML serving |
 
